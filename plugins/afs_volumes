@@ -1,0 +1,107 @@
+#!/usr/bin/perl
+#
+# Perl script to produce graphs of % quota usage of all AFS volumes on a given
+# server.
+#
+# Override the following by setting an appropriate environment variable in munin:
+# timeout_cmd
+# timeout
+# vos
+use strict;
+use warnings;
+
+use v5.14.0;
+
+#%# family=auto
+
+use Net::Domain;
+
+my $TIMEOUT_CMD = $ENV{timeout_cmd} // "/usr/bin/timeout";
+my $VOS = $ENV{vos} // "/usr/bin/vos";
+my $TIMEOUT = $ENV{timeout} // 10;
+
+my $server = $ENV{server} // Net::Domain::hostfqdn();
+
+# Given a server, for each partition on that server, for each volume on each
+# partition, colllect volume usage and quota information.  Return the results
+# in a hash where the keys are volume names and the values are hashes
+# containing 'size' and 'quota' keys and values in KB.
+sub serverinfo {
+    my ($server, $return_not_die) = @_;
+    my @command = ( $VOS, 'listvol', '-server', $server, '-long', '-noauth' );
+    # if timeout cmd and interval are set, use them
+    # we use an external command because it's much, much easier
+    if( $TIMEOUT_CMD and $TIMEOUT ){
+        unshift @command, $TIMEOUT_CMD, $TIMEOUT;
+    }
+    my $lvol;
+    unless (open ($lvol, '-|', @command)) {
+        if( $return_not_die ){
+            return undef;
+        } else {
+            print "AFS CRITICAL - cannot contact server\n";
+            exit 2;
+        }
+    }
+    my( $volume, $size, %results );
+    while( my $line = <$lvol> ){
+        if ($line =~ /^(\S+)\s+\d+ RW\s+(\d+) K\s+On-line\s*$/) {
+            ($volume, $size) = ($1, $2);
+            my $orig_vol_name = $volume;
+            $volume =~ s{\.}{_}g;
+            $results{$volume}{size} = $size;
+            $results{$volume}{name} = $orig_vol_name;
+        } elsif ($line =~ /^\s+MaxQuota\s+(\d+) K\s*$/ && defined $volume) {
+            $results{$volume}{quota} = $1;
+            $results{$volume}{percent} = sprintf "%.2f", ( $results{$volume}{size} / $results{$volume}{quota} * 100 );
+            $volume = undef;
+        } elsif ($line =~ /^\s*$/) { # next volume
+            $volume = undef;
+        }
+    }
+    return %results;
+}
+
+sub config {
+    my %results = serverinfo( $server );
+    print <<EOC;
+graph_title $server AFS volumes
+graph_scale no
+graph_args --base 1000 -l 0 --upper-limit 100
+graph_category fs
+graph_vlabel %
+EOC
+    print "graph_order " . join( " ", sort( keys( %results ) ) ) . "\n";
+    foreach my $vol ( sort(  keys( %results ) ) ){
+        print "$vol.label $vol\n";
+        print "$vol.warning 90\n";
+        print "$vol.critical 95\n";
+        print "$vol.info Percentage usage of volume $results{$vol}{name}\n";
+    }
+}
+
+sub get_values {
+    my %results = serverinfo( $server );
+    foreach my $vol ( sort( keys( %results ) ) ){
+        print "$vol.value $results{$vol}{percent}\n";
+    }
+}
+
+if( $ARGV[0] and $ARGV[0] eq 'config' ){
+    config();
+} elsif( $ARGV[0] and $ARGV[0] eq 'autoconf' ){
+    my $ret;
+
+    if( ! -x $VOS ){
+        $ret =  "$VOS does not exist/is not executable";
+    } elsif( ! serverinfo($server) ){
+        $ret = "Cannot run $VOS listvol -server $server";
+    }
+    if( $ret ){
+        print "no ($ret)\n";
+    } else {
+        print "yes\n";
+    }
+} else {
+    get_values();
+}
