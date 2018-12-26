@@ -1,0 +1,9 @@
+The Debian Package munin-plugins-afs
+----------------------------
+
+This package contains munin plugins for graphing of OpenAFS-related attributes.
+
+It is heavily influenced by Russ Allberry's AFS Monitor package
+(<https://www.eyrie.org/~eagle/software/afs-monitor/>)
+
+ -- Michael Howe <michael@michaelhowe.org>  Wed, 26 Dec 2018 20:56:00 +0000
