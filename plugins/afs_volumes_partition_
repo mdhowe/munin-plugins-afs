@@ -1,0 +1,155 @@
+#!/usr/bin/perl
+
+=head1 NAME
+
+afs_volumes_partition_ - plugin to graph AFS partition quota allocation
+
+=head1 CONFIGURATION
+
+To monitor a specific partition, link to afs_volumes_partition_<letter>.
+The following can be overriden using environment variables in the standard
+munin way:
+
+server, timeout_cmd, timeout, vos
+
+=head1 MAGIC MARKERS
+
+ #%# family=auto 
+ #%# capabilities=autoconf suggest
+
+=cut
+
+use strict;
+use warnings;
+
+use v5.14.0;
+
+use Munin::Plugin;
+use Net::Domain;
+
+my $VOS = $ENV{vos} // "/usr/bin/vos";
+my $TIMEOUT_CMD = $ENV{timeout_cmd} // "/usr/bin/timeout";
+my $TIMEOUT = $ENV{timeout} // 10;
+
+my $server = $ENV{server} // Net::Domain::hostfqdn();
+
+sub partinfo {
+    my( $server, $partition ) = @_;
+    my @command = ( $VOS, 'partinfo', '-server', $server, '-noauth', '-partition', $partition );
+    # if timeout cmd and interval are set, use them
+    # we use an external command because it's much, much easier
+    if( $TIMEOUT_CMD and $TIMEOUT ){
+        unshift @command, $TIMEOUT_CMD, $TIMEOUT;
+    }
+    my $pinfo;
+
+    unless( open( $pinfo, '-|', @command ) ){
+        die "$Munin::Plugin::me: cannot contact server\n";
+    }
+    my %results;
+    while( my $line = <$pinfo> ){
+        # Free space on partition /vicepa: 1595716 K blocks out of total 4767360
+        if( $line =~ m{/vicep[a-z]+:\s+(\d+) K.*total\s+(\d+)\s*$} ){
+            $results{free} = $1;
+            $results{total} = $2;
+            $results{used} = $results{total} - $results{free};
+        }
+    }
+    return %results;
+}
+sub serverinfo {
+    my( $server, $partition ) = @_;
+    my @command = ( $VOS, 'listvol', '-server', $server, '-long', '-noauth', '-partition', $partition );
+    # if timeout cmd and interval are set, use them
+    # we use an external command because it's much, much easier
+    if( $TIMEOUT_CMD and $TIMEOUT ){
+        unshift @command, $TIMEOUT_CMD, $TIMEOUT;
+    }
+    my $lvol;
+
+    unless( open( $lvol, '-|', @command ) ){
+        die "$Munin::Plugin::me: cannot contact server\n";
+    }
+
+    my( $volume, $size, %results );
+    while( my $line = <$lvol> ){
+            if ($line =~ /^(\S+)\s+\d+ RW\s+(\d+) K\s+On-line\s*$/) {
+                ($volume, $size) = ($1, $2);
+                my $orig_vol_name = $volume;
+                $volume =~ s{\.}{_}g;
+                $results{v}{$volume}{size} = $size;
+                $results{v}{$volume}{name} = $orig_vol_name;
+                $results{t}{size} += $size;
+            } elsif ($line =~ /^\s+MaxQuota\s+(\d+) K\s*$/ && defined $volume) {
+                $results{v}{$volume}{quota} = $1;
+                $results{v}{$volume}{percent} = sprintf "%.2f", ( $results{v}{$volume}{size} / $results{v}{$volume}{quota} * 100 );
+                $results{t}{quota} += $1;
+                $volume = undef;
+            } elsif ($line =~ /^\s*$/) { # next volume
+                $volume = undef;
+            }
+    }
+    return %results;
+}
+
+sub config {
+    my( $server, $partition ) = @_;
+    print <<EOC;
+graph_title $server AFS volumes on /vicep$partition
+graph_args --base 1024 -l 0
+graph_category fs
+graph_vlabel Bytes
+partition_max.label Partition size
+partition_max.info Total size of partition /vicep$partition
+volumes_quota.label Total quota of volumes
+volumes_quota.info Quota of all volumes on partition
+volumes_used.label Total used by volumes
+volumes_used.info Disk usage of all volumes on partition
+EOC
+}
+
+sub get_values {
+    my( $server, $partition ) = @_;
+    my %partinfo = partinfo($server, $partition);
+    my %serverinfo = serverinfo($server, $partition);
+
+    print "partition_max.value $partinfo{total}\n";
+    print "volumes_quota.value $serverinfo{t}{quota}\n";
+    print "volumes_used.value $serverinfo{t}{size}\n";
+}
+
+
+# need to be able to run suggest and autoconf without a partition being specified
+if( $ARGV[0] and $ARGV[0] eq 'suggest' ){
+    # There should be a way to do this in one line rather than three, but this
+    # is at least readable.
+    my @partitions = glob("/vicep*");
+    s{/vicep}{} for( @partitions );
+    print join("\n", @partitions );
+    exit;
+} elsif( $ARGV[0] and $ARGV[0] eq 'autoconf' ){
+    my @ret;
+    if( ! -x $VOS ){
+        push @ret, "$VOS does not exist/is not executable";
+    }
+    unless( glob("/vicep*") ){
+        push @ret, "No /vicep* partitions exist";
+    }
+    if( @ret ){
+        print "no (" . join(", ", @ret) . ")\n";
+    } else {
+        print "yes\n";
+    }
+}
+
+my ( $partition ) = $0 =~ m{afs_volumes_partition_([a-z]+)$};
+
+unless( $partition ){
+    die "$Munin::Plugin::me: Error: partition not defined\n";
+}
+
+if( $ARGV[0] and $ARGV[0] eq 'config' ){
+    config($server, $partition);
+} else {
+    get_values($server, $partition);
+}
