@@ -23,6 +23,7 @@ use warnings;
 
 use v5.14.0;
 
+use Munin::Plugin;
 use Net::Domain;
 
 my $VOS = $ENV{vos} // "/usr/bin/vos";
@@ -48,8 +49,7 @@ sub serverinfo {
         if( $return_not_die ){
             return undef;
         } else {
-            print "AFS CRITICAL - cannot contact server\n";
-            exit 2;
+            die "$Munin::Plugin::me: cannot contact server\n";
         }
     }
     my( $volume, $size, %results );
