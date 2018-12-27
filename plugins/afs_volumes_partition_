@@ -72,6 +72,8 @@ sub serverinfo {
     }
 
     my( $volume, $size, %results );
+    $results{t}{size} = 0;
+    $results{t}{quota} = 0;
     while( my $line = <$lvol> ){
             if ($line =~ /^(\S+)\s+\d+ RW\s+(\d+) K\s+On-line\s*$/) {
                 ($volume, $size) = ($1, $2 * 1024);
