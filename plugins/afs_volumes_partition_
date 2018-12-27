@@ -83,7 +83,7 @@ sub serverinfo {
             } elsif ($line =~ /^\s+MaxQuota\s+(\d+) K\s*$/ && defined $volume) {
                 $results{v}{$volume}{quota} = $1 * 1024;
                 $results{v}{$volume}{percent} = sprintf "%.2f", ( $results{v}{$volume}{size} / $results{v}{$volume}{quota} * 100 );
-                $results{t}{quota} += $1;
+                $results{t}{quota} += $1 * 1024;
                 $volume = undef;
             } elsif ($line =~ /^\s*$/) { # next volume
                 $volume = undef;
