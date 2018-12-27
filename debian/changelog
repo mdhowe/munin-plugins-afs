@@ -1,5 +1,5 @@
-munin-plugins-afs (1.0~test.0) UNRELEASED; urgency=medium
+munin-plugins-afs (1.0) unstable; urgency=medium
 
   * Initial Release.
 
- -- Michael Howe <michael@michaelhowe.org>  Wed, 26 Dec 2018 20:56:00 +0000
+ -- Michael Howe <michael@michaelhowe.org>  Thu, 27 Dec 2018 14:40:26 +0000
