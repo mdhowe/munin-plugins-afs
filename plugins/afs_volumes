@@ -1,18 +1,27 @@
 #!/usr/bin/perl
-#
-# Perl script to produce graphs of % quota usage of all AFS volumes on a given
-# server.
-#
-# Override the following by setting an appropriate environment variable in munin:
-# timeout_cmd
-# timeout
-# vos
+
+=head1 NAME
+
+afs_volumes - plugin to graph AFS volume quota usage
+
+=head1 CONFIGURATION
+
+The following can be overriden using environment variables in the standard
+munin way:
+
+server, timeout_cmd, timeout, vos
+
+=head1 MAGIC MARKERS
+
+ #%# family=auto 
+ #%# capabilities=autoconf
+
+=cut
+
 use strict;
 use warnings;
 
 use v5.14.0;
-
-#%# family=auto
 
 use Net::Domain;
 
