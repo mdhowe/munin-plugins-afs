@@ -103,7 +103,7 @@ if( $ARGV[0] and $ARGV[0] eq 'config' ){
 
     if( ! -x $VOS ){
         $ret =  "$VOS does not exist/is not executable";
-    } elsif( ! serverinfo($server) ){
+    } elsif( ! serverinfo($server, 1) ){
         $ret = "Cannot run $VOS listvol -server $server";
     }
     if( $ret ){
